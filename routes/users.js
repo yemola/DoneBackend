@@ -107,7 +107,6 @@ const upload = multer({
 
 //REGISTER / CREATE USER
 router.post("/", validateWith(schema), async (req, res, next) => {
-  console.log("body: ", body);
   let newUser = new User({
     firstname: req.body.firstname,
     lastname: req.body.lastname,
@@ -153,7 +152,7 @@ router.post("/", validateWith(schema), async (req, res, next) => {
           status: "PENDING",
           message: "New user created",
           data: {
-            userId: savedUer._id,
+            userId: savedUser._id,
             email: savedUser.email,
           },
         });
@@ -161,8 +160,6 @@ router.post("/", validateWith(schema), async (req, res, next) => {
       .catch((error) => {
         next(error);
       });
-
-    res.status(201).json(savedUser);
   } catch (err) {
     next(err);
   }
@@ -183,7 +180,7 @@ router.post(
           message: "This email is not registered",
         });
 
-      const { _id, email } = user;
+      const { _id, email } = user._doc;
 
       sendOTPMail({ _id, email }, res);
     } catch (error) {
@@ -203,7 +200,7 @@ const sendOTPMail = async ({ _id, email }, res) => {
       from: process.env.AUTH_EMAIL, // Change to your verified sender
       subject: "Password Reset Pin",
       text: "sorry about the stress, we understand",
-      html: `<p>Enter the <b>${otp}</b> in the app to verify your email addresss and complete the password reset process.</p><p>This code <b>expires in 1 hour<b/>.</p>`,
+      html: `<p>Enter the <b>${otp}</b> in the app to verify your email addresss and complete the password reset process.</p><p>This code <b>expires in 2 minutes<b/>.</p>`,
     };
 
     // //  Mail options
@@ -223,7 +220,7 @@ const sendOTPMail = async ({ _id, email }, res) => {
       userId: _id,
       otp,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 3600000,
+      expiresAt: Date.now() + 120000,
     });
 
     await newOTPVerification.save();
@@ -308,10 +305,6 @@ router.post("/resendOTP", async (req, res, next) => {
     }
   } catch (error) {
     next(error);
-    // res.json({
-    //   status: "FAILED",
-    //   message: error.message,
-    // });
   }
 });
 
@@ -345,10 +338,6 @@ router.put("/resetPassword/:id", async (req, res, next) => {
 
     res.status(200).send(updatedUser);
   } catch (error) {
-    // res.json({
-    //   status: "FAILED",
-    //   message: error.message,
-    // });
     next(error);
   }
 });
@@ -377,7 +366,6 @@ router.put("/updateUser", async (req, res, next) => {
     res.status(200).send(newUserDetails);
   } catch (err) {
     next(err);
-    // res.status(500).json(err);
   }
 });
 //UPDATE
@@ -415,7 +403,6 @@ router.put(
       res.status(200).send(updatedUser);
     } catch (err) {
       next(err);
-      // res.status(500).json(err);
     }
   }
 );
@@ -562,7 +549,6 @@ router.get("/:id", async (req, res, next) => {
     res.status(200).json(others);
   } catch (error) {
     next(error);
-    // res.status(500).json(error);
   }
 });
 

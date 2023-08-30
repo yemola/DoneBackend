@@ -85,7 +85,6 @@ router.post("/addNewChat", async (req, res, next) => {
 });
 
 // router.post("/getTotalNumOfChats", async (req, res, next) => {
-//   console.log("reqBody: ", req.body);
 //   const { userId } = req.body;
 
 //   try {
@@ -93,10 +92,8 @@ router.post("/addNewChat", async (req, res, next) => {
 //       toUserId: userId,
 //       status: "sent",
 //     });
-//     console.log("count: ", count);
 //     if (count) res.status(200).json({ count });
 //   } catch (error) {
-//     console.log("error: ", error);
 //     res.status(400).json(error);
 //   }
 // });

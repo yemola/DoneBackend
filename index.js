@@ -7,7 +7,6 @@ const compression = require("compression");
 const mongoose = require("mongoose");
 const Sentry = require("@sentry/node");
 
-// const categories = require("./routes/categories");
 const faqsRoute = require("./routes/faqs");
 const usersRoute = require("./routes/users");
 const authRoute = require("./routes/auth");
