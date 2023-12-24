@@ -5,6 +5,7 @@ const multer = require("multer");
 const helmet = require("helmet");
 const compression = require("compression");
 const mongoose = require("mongoose");
+const { MongoClient, ServerApiVersion } = require("mongodb");
 const Sentry = require("@sentry/node");
 
 const faqsRoute = require("./routes/faqs");
@@ -25,9 +26,29 @@ Sentry.init({
   tracesSampleRate: 1.0,
 });
 
-const mongoUrl = process.env.MONGO_URL;
+const uri = process.env.MONGO_URL;
+
+// const uri = process.env.MONGO_URL;
+// const client = new MongoClient(uri, {
+//   serverApi: {
+//     version: ServerApiVersion.v1,
+//     strict: true,
+//     deprecationErrors: true,
+//   },
+// });
+
+// async function run() {
+//   try {
+//     await client.connect();
+//     await client.db("DoneWithIt").command({ ping: 1 });
+//   } finally {
+//     await client.close();
+//   }
+// }
+// run().catch(console.dir);
+
 mongoose
-  .connect(mongoUrl)
+  .connect(uri)
   .then(() => console.log("DB Connected"))
   .catch((error) => console.log("error: ", error));
 
