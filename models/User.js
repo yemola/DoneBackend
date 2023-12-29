@@ -13,6 +13,7 @@ const UserSchema = new mongoose.Schema(
     password: { type: String, required: true },
     whatsapp: { type: String },
     image: { type: Object },
+    isActive: { type: Boolean, default: true },
     isAdmin: {
       type: Boolean,
       default: false,

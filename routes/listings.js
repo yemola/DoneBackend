@@ -208,15 +208,18 @@ router.get("/", async (req, res, next) => {
     let items;
 
     if (qNew) {
-      items = await Listing.find().sort({ createdAt: -1 }).limit(1);
+      items = await Listing.find({ inStock: true })
+        .sort({ createdAt: -1 })
+        .limit(1);
     } else if (qCategory) {
       items = await Listing.find({
         categoryId: {
           $in: [qCategory],
+          inStock: true,
         },
       });
     } else {
-      items = await Listing.find();
+      items = await Listing.find({ inStock: true });
     }
     res.status(200).json(items);
   } catch (err) {

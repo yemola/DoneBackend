@@ -21,15 +21,22 @@ router.post("/", validateWith(schema), async (req, res, next) => {
     const user = query2
       ? await User.findOne({ email: query2 })
       : await User.findOne({ username: query1 });
-    !user && res.status(401).json("Wrong username or email!");
-    if (!user && !req.body.password) return;
+
+    if (!user) {
+      return res.status(401).json({ error: "Wrong username or email!" });
+    }
+
+    if (user.isActive === false) {
+      return res.status(403).json({ error: "Your account is deactivated" });
+    }
+
     const hashedPassword = CryptoJS.AES.decrypt(
       user.password,
       process.env.PASS_SEC
     );
     const Originalpassword = hashedPassword.toString(CryptoJS.enc.Utf8);
     Originalpassword !== req.body.password &&
-      res.status(401).json("Wrong password!");
+      res.status(401).json({ error: "Wrong password!" });
 
     const { password, ...others } = user._doc;
 

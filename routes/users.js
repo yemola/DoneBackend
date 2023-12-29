@@ -45,6 +45,8 @@ const fileFilter = (req, file, cb) => {
     cb(new Error("file is not of the correct type"), false);
   }
 };
+
+// DELETE A USER ACCOUNT
 router.post("/deleteUserAccount", async (req, res, next) => {
   const { userId } = req.body;
 
@@ -52,6 +54,25 @@ router.post("/deleteUserAccount", async (req, res, next) => {
     let user = await User.findOne({ _id: userId });
 
     if (!user) return res.json("User already deleted");
+
+    try {
+      const delNotice = {
+        to: "laflosd@gmail.com", // Change to your recipient
+        from: process.env.AUTH_EMAIL, // Change to your verified sender
+        subject: "User Account Deletion",
+        text: "sorry about the stress, we understand",
+        html: `<p>A user account deletion from JejeSales Marketplace is being requested. Below are the details of the user.</p>
+                   <p>Name: ${user.firstname}
+                      ${user.lastname} </p>
+                     <p>City: ${user.city}</p>
+                      <p>State: ${user.state}</p>
+                      <p>Country: ${user.country}</p>`,
+      };
+
+      await sgMail.send(delNotice);
+    } catch (error) {
+      next(error);
+    }
 
     let newDelete = new DeletedUser({
       firstname: user.firstname,
@@ -107,22 +128,6 @@ const upload = multer({
 
 //REGISTER / CREATE USER
 router.post("/", validateWith(schema), async (req, res, next) => {
-  let newUser = new User({
-    firstname: req.body.firstname,
-    lastname: req.body.lastname,
-    username: req.body.username,
-    email: req.body.email,
-    city: req.body.city,
-    state: req.body.state,
-    country: req.body.country,
-    countryCode: req.body.countryCode,
-    whatsapp: req.body.whatsapp,
-    password: CryptoJS.AES.encrypt(
-      req.body.password,
-      process.env.PASS_SEC
-    ).toString(),
-  });
-
   try {
     let checkedEmail = await User.findOne({ email: req.body.email });
     if (checkedEmail)
@@ -130,13 +135,64 @@ router.post("/", validateWith(schema), async (req, res, next) => {
         .status(401)
         .json("Email already registered. Use another email address");
 
+    let newUser = new User({
+      firstname: req.body.firstname,
+      lastname: req.body.lastname,
+      username: req.body.username,
+      email: req.body.email,
+      city: req.body.city,
+      state: req.body.state,
+      country: req.body.country,
+      countryCode: req.body.countryCode,
+      whatsapp: req.body.whatsapp,
+      password: CryptoJS.AES.encrypt(
+        req.body.password,
+        process.env.PASS_SEC
+      ).toString(),
+    });
+
     const savedUser = await newUser.save();
+    // const otp = `${Math.floor(100000 + Math.random() * 900000)}`;
+
+    // const confirmationEmail = {
+    //   to: req.body.email, // Change to your recipient
+    //   from: process.env.AUTH_EMAIL, // Change to your verified sender
+    //   subject: "New User Registered",
+    //   html: `<p>Thank you for registering on Jejesales! To complete your registration, please use the one-time password (OTP) sent to your email address to verify your account. Your security is our priority, and we look forward to providing you with a seamless experience on our app.</p>
+    //          <p><b>${otp}</b></p>
+    //          <p>Best Regards,<p>
+    //          <p>JejeSales</p>`,
+    // };
+
+    // const newOTPVerification = new UserOTPVerification({
+    //   userId: savedUser._id,
+    //   otp,
+    //   createdAt: Date.now(),
+    //   expiresAt: Date.now() + 600000,
+    // });
+
+    // await newOTPVerification.save();
+
+    // await sgMail
+    //   .send(confirmationEmail)
+    //   .then(() => {
+    //     res.json({
+    //       status: "PENDING",
+    //       message: "Email verification otp sent",
+    //       data: {
+    //         userId: savedUser._id,
+    //         email: savedUser.email,
+    //       },
+    //     });
+    //   })
+    //   .catch((error) => {
+    //     next(error);
+    //   });
 
     const regNotice = {
       to: "laflosd@gmail.com", // Change to your recipient
       from: process.env.AUTH_EMAIL, // Change to your verified sender
       subject: "New User Registered",
-      text: "sorry about the stress, we understand",
       html: `<p>A new user with the details below has registered on JejeSales marketplace.</p>
                <p>Name: ${savedUser.firstname}
                   ${savedUser.lastname} </p>
@@ -199,33 +255,17 @@ const sendOTPMail = async ({ _id, email }, res) => {
       to: email, // Change to your recipient
       from: process.env.AUTH_EMAIL, // Change to your verified sender
       subject: "Password Reset Pin",
-      text: "sorry about the stress, we understand",
       html: `<p>Enter the <b>${otp}</b> in the app to verify your email addresss and complete the password reset process.</p><p>This code <b>expires in 2 minutes<b/>.</p>`,
     };
-
-    // //  Mail options
-    // const mailOptions = {
-    //   from: process.env.AUTH_EMAIL,
-    //   to: email,
-    //   subject: "Verify Your Email",
-    //   html: `<p>Enter the <b>${otp}</b> in the app to verify your email addresss and complete the password reset process.</p><p>This code <b>expires in 1 hour<b/>.</p>`,
-    // };
-
-    // // Hash otp
-    // const saltRounds = 10;
-
-    // const hashedOTP = await bcrypt.hash(otp, saltRounds);
 
     const newOTPVerification = new UserOTPVerification({
       userId: _id,
       otp,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 120000,
+      expiresAt: Date.now() + 600000,
     });
 
     await newOTPVerification.save();
-
-    // await transporter.sendMail(mailOptions);
 
     await sgMail
       .send(msg)
@@ -453,20 +493,20 @@ router.put(
   }
 );
 
-// DELETE A USER
-router.post("/deleteUserAccount", async (req, res, next) => {
+// DISABLE A USER/MY ACCOUNT
+router.post("/disableUserAccount", async (req, res, next) => {
   const { userId } = req.body;
 
   try {
     let user = await User.findOne({ _id: userId });
 
     try {
-      const delNotice = {
+      const disableNotice = {
         to: "laflosd@gmail.com", // Change to your recipient
         from: process.env.AUTH_EMAIL, // Change to your verified sender
-        subject: "User Account Deletion",
+        subject: "User Disabled Their Account",
         text: "sorry about the stress, we understand",
-        html: `<p>A user account is being deleted from JejeSales Marketplace. Below are the details of the user.</p>
+        html: `<p>A user has just disabled their account on JejeSales Marketplace. Below are the details of the user.</p>
                    <p>Name: ${user.firstname}
                       ${user.lastname} </p>
                      <p>City: ${user.city}</p>
@@ -474,52 +514,18 @@ router.post("/deleteUserAccount", async (req, res, next) => {
                       <p>Country: ${user.country}</p>`,
       };
 
-      await sgMail.send(delNotice);
+      await sgMail.send(disableNotice);
     } catch (error) {
       next(error);
     }
+    const updateUser = { isActive: false };
+    await User.findOneAndUpdate({ _id: userId }, updateUser, { new: true });
 
     if (!user) return res.json("User already deleted");
-    let newDelete = new DeletedUser({
-      firstname: user.firstname,
-      lastname: user.lastname,
-      username: user.username,
-      city: user.city,
-      state: user.state,
-      country: user.country,
-      countryCode: user.countryCode,
-      email: user.email,
-      password: user.password,
-      whatsapp: user.whatsapp,
-      image: user.image,
-      isAdmin: user.isAdmin,
-      verified: user.verified,
-      expoPushToken: user.expoPushToken,
-    });
-    const deletedUser = await newDelete.save();
+    const updateItems = { $set: { inStock: false } };
+    await Listing.updateMany({ userId }, updateItems, { new: true });
 
-    const userListings = await Listing.find({ userId });
-
-    for (listing of userListings) {
-      try {
-        const imgDel = await s3Deletev2(listing.images);
-
-        res.status(204).json({ message: "listing images deleted." });
-      } catch (error) {
-        next(error);
-        // res.status(404).json({ message: "listing images could not be found." });
-      }
-    }
-
-    const response = await Listing.deleteMany({ userId });
-
-    if (!response)
-      res.status(204).json({ message: "Could not delete listings." });
-    const result = await User.findByIdAndDelete(userId);
-    if (!result)
-      return res.status(204).json({
-        message: "User account deleted.",
-      });
+    res.status(200).json("ok");
   } catch (error) {
     next(error);
     // res.status(500).json({ message: "internal server error", error });
