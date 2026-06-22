@@ -19,6 +19,7 @@ async function run() {
       Bucket: bucketName,
       Body: "Hello from Antigravity backend S3 test!",
       Key: `test-${Date.now()}.txt`,
+      ContentType: "image/jpeg",
     };
     const result = await s3.upload(param).promise();
     console.log("Success! File uploaded:", result.Location);

@@ -48,10 +48,7 @@ router.post(
         country: req.body.country,
         countryCode: req.body.countryCode,
         whatsapp: req.body.whatsapp,
-        images: data.map((image) => ({
-          url: `${image.Location}`,
-          thumbnailUrl: `${image.Location}`,
-        })),
+        images: data,
       });
 
       if (req.body.location) listing.location = JSON.parse(req.body.location);

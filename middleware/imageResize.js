@@ -22,16 +22,21 @@ module.exports = async (req, res, next) => {
         image = sharp(file.path).toFormat("jpeg");
       }
 
+      const fullPath = path.resolve(outputFolder, file.filename + "_full.jpg");
+      const thumbPath = path.resolve(outputFolder, file.filename + "_thumb.jpg");
+
       await image
         .resize(1000)
         .jpeg({ quality: 50 })
-        .toFile(path.resolve(outputFolder, file.filename + "_full.jpg"));
+        .toFile(fullPath);
 
       await sharp(file.path)
         .resize(100)
         .jpeg({ quality: 30 })
-        .toFile(path.resolve(outputFolder, file.filename + "_thumb.jpg"));
+        .toFile(thumbPath);
 
+      file.fullPath = fullPath;
+      file.thumbPath = thumbPath;
       files.push(file);
     } catch (error) {
       console.error(`Error processing image ${file.filename}:`, error.message);

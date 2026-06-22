@@ -21,9 +21,20 @@ exports.s3UploadOne = async (file) => {
     Bucket: bucketName,
     Body: fileStream,
     Key: file.filename,
-    ContentType: "image/jpeg",
+    ContentType: file.mimetype || "image/jpeg",
   };
-  return await s3.upload(param).promise();
+  const result = await s3.upload(param).promise();
+
+  // Clean up original file from local uploads/profile folder
+  try {
+    if (file.path && fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+    }
+  } catch (err) {
+    console.error(`Error deleting local profile temp file ${file.path}:`, err.message);
+  }
+
+  return result;
 };
 
 exports.s3Uploadv2 = async (files) => {
@@ -33,17 +44,71 @@ exports.s3Uploadv2 = async (files) => {
     secretAccessKey,
   });
 
-  const params = files.map((file) => {
-    const fileStream = fs.createReadStream(file.path);
-    return {
-      Bucket: bucketName,
-      Body: fileStream,
-      Key: file.filename,
-      ContentType: "image/jpeg",
-    };
+  const uploadPromises = files.map(async (file) => {
+    // If the file has a fullPath and thumbPath from imageResize middleware, upload both
+    if (file.fullPath && file.thumbPath) {
+      const fullStream = fs.createReadStream(file.fullPath);
+      const thumbStream = fs.createReadStream(file.thumbPath);
+
+      const fullUploadParam = {
+        Bucket: bucketName,
+        Body: fullStream,
+        Key: `${file.filename}_full.jpg`,
+        ContentType: "image/jpeg",
+      };
+
+      const thumbUploadParam = {
+        Bucket: bucketName,
+        Body: thumbStream,
+        Key: `${file.filename}_thumb.jpg`,
+        ContentType: "image/jpeg",
+      };
+
+      const [fullResult, thumbResult] = await Promise.all([
+        s3.upload(fullUploadParam).promise(),
+        s3.upload(thumbUploadParam).promise(),
+      ]);
+
+      // Clean up local temp files
+      try {
+        if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        if (file.fullPath && fs.existsSync(file.fullPath)) fs.unlinkSync(file.fullPath);
+        if (file.thumbPath && fs.existsSync(file.thumbPath)) fs.unlinkSync(file.thumbPath);
+      } catch (cleanupErr) {
+        console.error("Cleanup of local temp files failed:", cleanupErr.message);
+      }
+
+      return {
+        url: fullResult.Location,
+        thumbnailUrl: thumbResult.Location,
+      };
+    } else {
+      // Fallback: upload original file
+      const fileStream = fs.createReadStream(file.path);
+      const uploadParam = {
+        Bucket: bucketName,
+        Body: fileStream,
+        Key: file.filename,
+        ContentType: file.mimetype || "image/jpeg",
+      };
+      const result = await s3.upload(uploadParam).promise();
+
+      try {
+        if (file.path && fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      } catch (cleanupErr) {
+        console.error(`Error deleting local temp file ${file.path}:`, cleanupErr.message);
+      }
+
+      return {
+        url: result.Location,
+        thumbnailUrl: result.Location,
+      };
+    }
   });
 
-  return await Promise.all(params.map((param) => s3.upload(param).promise()));
+  return await Promise.all(uploadPromises);
 };
 
 exports.s3Deletev2 = async (files) => {
@@ -53,18 +118,26 @@ exports.s3Deletev2 = async (files) => {
     secretAccessKey,
   });
 
-  const params = files.map((file) => {
-    const baseUrl = `https://${bucketName}.s3.${region}.amazonaws.com/`;
+  const baseUrl = `https://${bucketName}.s3.${region}.amazonaws.com/`;
+  const keysToDelete = [];
 
-    return {
-      Bucket: bucketName,
-      Key: file.url.replace(new RegExp(`^${baseUrl}`), ""),
-    };
+  files.forEach((file) => {
+    if (file.url) {
+      keysToDelete.push(file.url.replace(new RegExp(`^${baseUrl}`), ""));
+    }
+    if (file.thumbnailUrl && file.thumbnailUrl !== file.url) {
+      keysToDelete.push(file.thumbnailUrl.replace(new RegExp(`^${baseUrl}`), ""));
+    }
   });
 
-  return await Promise.all(
-    params.map((param) => s3.deleteObject(param).promise())
-  );
+  const deletePromises = keysToDelete.map((key) => {
+    return s3.deleteObject({
+      Bucket: bucketName,
+      Key: key,
+    }).promise();
+  });
+
+  return await Promise.all(deletePromises);
 };
 
 // downloads a file from s3
