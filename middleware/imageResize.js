@@ -5,25 +5,49 @@ const fs = require("fs");
 const outputFolder = "public/assets";
 
 module.exports = async (req, res, next) => {
+  if (!req.files || !Array.isArray(req.files)) {
+    req.files = [];
+    return next();
+  }
+
   const files = [];
 
   const resizePromises = req.files.map(async (file) => {
-    await sharp(file.path)
-      .resize(1000)
-      .jpeg({ quality: 50 })
-      .toFile(path.resolve(outputFolder, file.filename + "_full.jpg"));
+    try {
+      // Convert HEIF/HEIC to JPEG first if needed
+      let image = sharp(file.path);
+      
+      // Try to convert from HEIF/HEIC to JPEG buffer first
+      if (file.mimetype === "image/heif" || file.mimetype === "image/heic") {
+        image = sharp(file.path).toFormat("jpeg");
+      }
 
-    await sharp(file.path)
-      .resize(100)
-      .jpeg({ quality: 30 })
-      .toFile(path.resolve(outputFolder, file.filename + "_thumb.jpg"));
+      await image
+        .resize(1000)
+        .jpeg({ quality: 50 })
+        .toFile(path.resolve(outputFolder, file.filename + "_full.jpg"));
 
-    // fs.unlinkSync(file.path);
+      await sharp(file.path)
+        .resize(100)
+        .jpeg({ quality: 30 })
+        .toFile(path.resolve(outputFolder, file.filename + "_thumb.jpg"));
 
-    files.push(file);
+      files.push(file);
+    } catch (error) {
+      console.error(`Error processing image ${file.filename}:`, error.message);
+      // Continue processing other files instead of stopping
+      try {
+        fs.unlinkSync(file.path); // Clean up failed upload
+      } catch (unlinkError) {
+        console.error(`Could not delete file ${file.path}:`, unlinkError.message);
+      }
+    }
   });
 
-  await Promise.all([...resizePromises]);
+  await Promise.all([...resizePromises]).catch((error) => {
+    console.error("Error in image resizing:", error);
+    // Don't throw here to allow partial uploads
+  });
 
   req.files = files;
 

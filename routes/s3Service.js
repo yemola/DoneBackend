@@ -1,9 +1,5 @@
 require("dotenv").config();
-
-const { Upload } = require("@aws-sdk/lib-storage");
-
-const { S3 } = require("@aws-sdk/client-s3");
-
+const { S3 } = require("aws-sdk");
 const uuid = require("uuid").v4;
 const fs = require("fs");
 
@@ -17,11 +13,8 @@ const secretAccessKey = process.env.AWS_SECRET_KEY;
 exports.s3UploadOne = async (file) => {
   const s3 = new S3({
     region,
-
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-    },
+    accessKeyId,
+    secretAccessKey,
   });
   const fileStream = fs.createReadStream(file.path);
   const param = {
@@ -29,20 +22,14 @@ exports.s3UploadOne = async (file) => {
     Body: fileStream,
     Key: file.filename,
   };
-  return await new Upload({
-    client: s3,
-    params: param,
-  }).done();
+  return await s3.upload(param).promise();
 };
 
 exports.s3Uploadv2 = async (files) => {
   const s3 = new S3({
     region,
-
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-    },
+    accessKeyId,
+    secretAccessKey,
   });
 
   const params = files.map((file) => {
@@ -54,24 +41,14 @@ exports.s3Uploadv2 = async (files) => {
     };
   });
 
-  return await Promise.all(
-    params.map((param) =>
-      new Upload({
-        client: s3,
-        params: param,
-      }).done()
-    )
-  );
+  return await Promise.all(params.map((param) => s3.upload(param).promise()));
 };
 
 exports.s3Deletev2 = async (files) => {
   const s3 = new S3({
     region,
-
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-    },
+    accessKeyId,
+    secretAccessKey,
   });
 
   const params = files.map((file) => {
@@ -83,5 +60,24 @@ exports.s3Deletev2 = async (files) => {
     };
   });
 
-  return await Promise.all(params.map((param) => s3.deleteObject(param)));
+  return await Promise.all(
+    params.map((param) => s3.deleteObject(param).promise())
+  );
 };
+
+// downloads a file from s3
+
+// exports.getFileStream = async (imagePath) => {
+//   const downloadParam = {
+//     Key: imagePath,
+//     Bucket: bucketName,
+//   };
+
+//   return s3.getObject(downloadParam).createReadStream();
+// };
+
+// `${file.key}`
+
+// https://donebucket1.s3.eu-central-1.amazonaws.com/
+
+// `${uuid()}-${file.originalname}`

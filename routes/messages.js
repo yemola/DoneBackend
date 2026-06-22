@@ -15,12 +15,30 @@ const schema = yup.object().shape({
   message: yup.string().required(),
 });
 
+/**
+ * GET /getUserChats
+ *
+ * Returns all messages where the requesting user is sender OR receiver.
+ *
+ * FIX: was querying `{ userId }` which matched nothing — the schema uses
+ *      `fromUserId` and `toUserId`.
+ *
+ * Optional query param: ?since=<unix_ms>
+ *   When provided, only messages created after that timestamp are returned.
+ *   Used by the app on reconnect to fetch only the messages it missed,
+ *   instead of re-downloading the full history.
+ */
 router.post("/getUserChats", async (req, res, next) => {
   const userId = req.body.userId;
+  const since = req.query.since ? new Date(Number(req.query.since)) : null;
 
   try {
-    const resources = await Messages.find({ userId });
+    const query = {
+      $or: [{ fromUserId: userId }, { toUserId: userId }],
+    };
+    if (since) query.createdAt = { $gt: since };
 
+    const resources = await Messages.find(query).sort({ createdAt: 1 });
     res.status(200).send(resources);
   } catch (error) {
     next(error);
@@ -31,15 +49,16 @@ router.post("/delete", async (req, res, next) => {
   try {
     const chatsToDelete = req.body.selectedItems;
 
+    if (!Array.isArray(chatsToDelete)) {
+      return res.status(200).json("Deleted (none specified)");
+    }
+
     if (chatsToDelete.length === 1) {
       const [chatId] = chatsToDelete;
-
       await Messages.findByIdAndDelete({ _id: chatId });
     }
     if (chatsToDelete.length > 1) {
-      const result = await chatsToDelete.forEach(async (delChat) => {
-        await Messages.findByIdAndDelete(delChat);
-      });
+      await Promise.all(chatsToDelete.map((id) => Messages.findByIdAndDelete(id)));
     }
     res.status(200).json("Deleted");
   } catch (error) {
@@ -47,34 +66,46 @@ router.post("/delete", async (req, res, next) => {
   }
 });
 
+/**
+ * POST /addNewChat
+ *
+ * REST fallback for sending a message (used when WebSocket is unavailable).
+ * Idempotency: if a clientMsgId is supplied and the message already exists,
+ * return the existing document instead of creating a duplicate.
+ */
 router.post("/addNewChat", async (req, res, next) => {
   const { newChat } = req.body;
-  const chat = new Messages({
-    fromUserId: newChat.fromUserId,
-    toUserId: newChat.toUserId,
-    listingId: "",
-    listItem: "",
-    content: newChat.content,
-    sender: newChat.sender,
-    receiver: newChat.receiver,
-    senderImg: newChat.senderImg,
-    receiverImg: newChat.receiverImg,
-    createdAt: newChat.createdAt,
-    createdDate: newChat.date,
-    createdTime: newChat.time,
-    status: newChat.status,
-  });
 
   try {
+    // Idempotency check — prevents duplicate messages on retry
+    if (newChat.clientMsgId) {
+      const existing = await Messages.findOne({ clientMsgId: newChat.clientMsgId });
+      if (existing) return res.status(200).json(existing);
+    }
+
+    const chat = new Messages({
+      clientMsgId: newChat.clientMsgId ?? undefined,
+      fromUserId: newChat.fromUserId,
+      toUserId: newChat.toUserId,
+      listingId: "",
+      listItem: "",
+      content: newChat.content,
+      sender: newChat.sender,
+      receiver: newChat.receiver,
+      senderImg: newChat.senderImg,
+      receiverImg: newChat.receiverImg,
+      createdAt: newChat.createdAt,
+      createdDate: newChat.date,
+      createdTime: newChat.time,
+      status: newChat.status ?? "sent",
+    });
+
     const savedChat = await chat.save();
 
     const targetUser = await User.findById(savedChat.toUserId);
-
     if (!targetUser) return res.status(400).json({ status: "FAILED" });
 
     const { expoPushToken } = targetUser;
-    // const { toUserId: userId } = savedChat;
-
     if (Expo.isExpoPushToken(expoPushToken))
       await sendPushNotification(expoPushToken, savedChat);
 
@@ -83,20 +114,6 @@ router.post("/addNewChat", async (req, res, next) => {
     next(error);
   }
 });
-
-// router.post("/getTotalNumOfChats", async (req, res, next) => {
-//   const { userId } = req.body;
-
-//   try {
-//     const count = await Messages.countDocuments({
-//       toUserId: userId,
-//       status: "sent",
-//     });
-//     if (count) res.status(200).json({ count });
-//   } catch (error) {
-//     res.status(400).json(error);
-//   }
-// });
 
 router.put("/updateChats", async (req, res, next) => {
   const { idsToUpdate } = req.body;
@@ -121,12 +138,13 @@ router.post("/", validateWith(schema), async (req, res, next) => {
   const listing = await Listing.findById(listingId);
 
   if (!listing)
-    return res.status(400).send({ status: "FAILED", message: error.message });
+    return res.status(400).send({ status: "FAILED", message: "Listing not found" });
 
   const targetUser = await User.findById(listing.userId);
 
   if (!targetUser)
-    return res.status(400).json({ status: "FAILED", message: error.message });
+    return res.status(400).json({ status: "FAILED", message: "User not found" });
+
   let now = new Date();
   const month = [
     "January",
@@ -153,9 +171,7 @@ router.post("/", validateWith(schema), async (req, res, next) => {
     senderImg: user.image,
     receiverImg: targetUser.image,
     createdAt: new Date(),
-    createdDate: `${
-      month[now.getUTCMonth()]
-    } ${now.getDate()}, ${now.getFullYear()}`,
+    createdDate: `${month[now.getUTCMonth()]} ${now.getDate()}, ${now.getFullYear()}`,
     createdTime: `${now.getHours()}:${now.getMinutes()}`,
     status: "sent",
   });
@@ -172,3 +188,4 @@ router.post("/", validateWith(schema), async (req, res, next) => {
 router.use(errorHandler);
 
 module.exports = router;
+

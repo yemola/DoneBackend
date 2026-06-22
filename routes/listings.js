@@ -32,52 +32,36 @@ router.post(
   "/",
   [upload.array("images"), imageResize],
   async (req, res, next) => {
-    const files = req.files;
+    try {
+      const files = req.files;
+      const data = await s3Uploadv2(files);
 
-    const data = await s3Uploadv2(files);
-
-    const listing = new Listing({
-      title: req.body.title,
-      price: req.body.price,
-      categoryId: parseInt(req.body.categoryId),
-      description: req.body.description,
-      userId: req.body.userId,
-      userImg: req.body.userImg,
-      username: req.body.username,
-      state: req.body.state,
-      country: req.body.country,
-      countryCode: req.body.countryCode,
-      whatsapp: req.body.whatsapp,
-      images: data.map((image) => ({
-        url: `${image.Location}`,
-        thumbnailUrl: `${image.Location}`,
-      })),
-    });
-
-    if (req.body.location) listing.location = JSON.parse(req.body.location);
-
-    listing
-      .save()
-      .then((result) => {
-        res.status(200).send({
-          _id: result._id,
-          categoryId: result.categoryId,
-          title: result.title,
-          price: result.price,
-          userId: result.userId,
-          description: result.description,
-          images: data.map((image) => ({
-            url: `${image.Location}`,
-            thumbnailUrl: `${image.Location}`,
-          })),
-        });
-      })
-      .catch((err) => {
-        next(err);
+      const listing = new Listing({
+        title: req.body.title,
+        price: req.body.price,
+        categoryId: parseInt(req.body.categoryId),
+        description: req.body.description,
+        userId: req.body.userId,
+        userImg: req.body.userImg,
+        username: req.body.username,
+        state: req.body.state,
+        country: req.body.country,
+        countryCode: req.body.countryCode,
+        whatsapp: req.body.whatsapp,
+        images: data.map((image) => ({
+          url: `${image.Location}`,
+          thumbnailUrl: `${image.Location}`,
+        })),
       });
-    // return res.status(201).send(listing);
-    // url: `${cloudFrontUrl}/${image.key}`,
-    //         thumbnailUrl: `${cloudFrontUrl}/${image.key}`,
+
+      if (req.body.location) listing.location = JSON.parse(req.body.location);
+
+      const result = await listing.save();
+      res.status(200).send(result);
+    } catch (err) {
+      console.error("Error creating listing:", err);
+      next(err);
+    }
   }
 );
 
@@ -208,18 +192,15 @@ router.get("/", async (req, res, next) => {
     let items;
 
     if (qNew) {
-      items = await Listing.find({ inStock: true })
-        .sort({ createdAt: -1 })
-        .limit(1);
+      items = await Listing.find().sort({ createdAt: -1 }).limit(1);
     } else if (qCategory) {
       items = await Listing.find({
         categoryId: {
           $in: [qCategory],
-          inStock: true,
         },
       });
     } else {
-      items = await Listing.find({ inStock: true });
+      items = await Listing.find();
     }
     res.status(200).json(items);
   } catch (err) {
