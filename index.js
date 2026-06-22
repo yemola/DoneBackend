@@ -27,6 +27,17 @@ const sendPushNotification = require("./utilities/pushNotifications");
 const app = express();
 const server = http.createServer(app);
 
+// Ensure required directories exist
+const fs = require("fs");
+const path = require("path");
+const requiredDirs = ["public", "public/assets", "uploads", "profile"];
+requiredDirs.forEach((dir) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
+
+
 // ─── Socket.IO ──────────────────────────────────────────────────────────────
 const io = new Server(server, {
   cors: {
