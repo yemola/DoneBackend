@@ -21,6 +21,7 @@ exports.s3UploadOne = async (file) => {
     Bucket: bucketName,
     Body: fileStream,
     Key: file.filename,
+    ContentType: "image/jpeg",
   };
   return await s3.upload(param).promise();
 };
@@ -38,6 +39,7 @@ exports.s3Uploadv2 = async (files) => {
       Bucket: bucketName,
       Body: fileStream,
       Key: file.filename,
+      ContentType: "image/jpeg",
     };
   });
 
