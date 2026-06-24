@@ -30,11 +30,25 @@ const upload = multer({
 
 router.post(
   "/",
-  [upload.array("images"), imageResize],
+  [
+    (req, res, next) => {
+      console.log("[LISTING CREATE] Incoming request Content-Type:", req.headers["content-type"]);
+      console.log("[LISTING CREATE] Incoming request Headers:", JSON.stringify(req.headers));
+      next();
+    },
+    upload.array("images"),
+    imageResize
+  ],
   async (req, res, next) => {
     try {
       const files = req.files;
+      console.log(`[LISTING CREATE] multer+imageResize passed ${files?.length ?? 0} file(s)`);
+      files?.forEach((f, i) =>
+        console.log(`  [${i}] filename=${f.filename} mimetype=${f.mimetype} fullPath=${f.fullPath} thumbPath=${f.thumbPath}`)
+      );
+
       const data = await s3Uploadv2(files);
+      console.log(`[LISTING CREATE] s3Uploadv2 returned ${data?.length ?? 0} result(s):`, JSON.stringify(data));
 
       const listing = new Listing({
         title: req.body.title,

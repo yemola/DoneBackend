@@ -6,9 +6,12 @@ const outputFolder = "public/assets";
 
 module.exports = async (req, res, next) => {
   if (!req.files || !Array.isArray(req.files)) {
+    console.log(`[imageResize] No files — req.files is`, req.files);
     req.files = [];
     return next();
   }
+
+  console.log(`[imageResize] Received ${req.files.length} file(s) from multer`);
 
   const files = [];
 
@@ -55,6 +58,6 @@ module.exports = async (req, res, next) => {
   });
 
   req.files = files;
-
+  console.log(`[imageResize] ${files.length} file(s) passed to next (after sharp processing)`);
   next();
 };

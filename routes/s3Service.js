@@ -1,29 +1,42 @@
 require("dotenv").config();
-const { S3 } = require("aws-sdk");
-const uuid = require("uuid").v4;
+const { S3Client, DeleteObjectCommand } = require("@aws-sdk/client-s3");
+const { Upload } = require("@aws-sdk/lib-storage");
+const { v4: uuid } = require("uuid");
 const fs = require("fs");
 
 const bucketName = process.env.AWS_BUCKET_NAME;
 const region = process.env.AWS_BUCKET_REGION;
-const accessKeyId = process.env.AWS_ACCESS_KEY;
-const secretAccessKey = process.env.AWS_SECRET_KEY;
 
-// uploads a file to s3
+// Shared S3 client instance (v3 uses credentials from env automatically,
+// but we read them explicitly to maintain backwards compat with existing .env)
+const s3Client = new S3Client({
+  region,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY,
+    secretAccessKey: process.env.AWS_SECRET_KEY,
+  },
+});
 
+// Helper: build the public URL for an uploaded object
+const buildUrl = (key) =>
+  `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
+
+// uploads a single file to s3
 exports.s3UploadOne = async (file) => {
-  const s3 = new S3({
-    region,
-    accessKeyId,
-    secretAccessKey,
-  });
   const fileStream = fs.createReadStream(file.path);
-  const param = {
-    Bucket: bucketName,
-    Body: fileStream,
-    Key: file.filename,
-    ContentType: file.mimetype || "image/jpeg",
-  };
-  const result = await s3.upload(param).promise();
+
+  const upload = new Upload({
+    client: s3Client,
+    params: {
+      Bucket: bucketName,
+      Body: fileStream,
+      Key: file.filename,
+      // Use detected mimetype, fall back to octet-stream (safe universal default)
+      ContentType: file.mimetype || "application/octet-stream",
+    },
+  });
+
+  const result = await upload.done();
 
   // Clean up original file from local uploads/profile folder
   try {
@@ -34,40 +47,48 @@ exports.s3UploadOne = async (file) => {
     console.error(`Error deleting local profile temp file ${file.path}:`, err.message);
   }
 
-  return result;
+  // v3 Upload returns ETag/Location — build URL explicitly for consistency
+  return {
+    ...result,
+    Location: result.Location ?? buildUrl(file.filename),
+  };
 };
 
 exports.s3Uploadv2 = async (files) => {
-  const s3 = new S3({
-    region,
-    accessKeyId,
-    secretAccessKey,
-  });
+  console.log(`[S3] s3Uploadv2 called with ${files?.length ?? 0} file(s)`);
+  if (!files || files.length === 0) return [];
 
-  const uploadPromises = files.map(async (file) => {
+  const uploadPromises = files.map(async (file, i) => {
     // If the file has a fullPath and thumbPath from imageResize middleware, upload both
     if (file.fullPath && file.thumbPath) {
-      const fullStream = fs.createReadStream(file.fullPath);
-      const thumbStream = fs.createReadStream(file.thumbPath);
+      console.log(`  [S3][${i}] Uploading full+thumb for key=${file.filename}`);
+      // sharp always outputs JPEG regardless of original format (HEIC, PNG, etc.)
+      const fullUpload = new Upload({
+        client: s3Client,
+        params: {
+          Bucket: bucketName,
+          Body: fs.createReadStream(file.fullPath),
+          Key: `${file.filename}_full.jpg`,
+          ContentType: "image/jpeg",
+        },
+      });
 
-      const fullUploadParam = {
-        Bucket: bucketName,
-        Body: fullStream,
-        Key: `${file.filename}_full.jpg`,
-        ContentType: "image/jpeg",
-      };
-
-      const thumbUploadParam = {
-        Bucket: bucketName,
-        Body: thumbStream,
-        Key: `${file.filename}_thumb.jpg`,
-        ContentType: "image/jpeg",
-      };
+      const thumbUpload = new Upload({
+        client: s3Client,
+        params: {
+          Bucket: bucketName,
+          Body: fs.createReadStream(file.thumbPath),
+          Key: `${file.filename}_thumb.jpg`,
+          ContentType: "image/jpeg",
+        },
+      });
 
       const [fullResult, thumbResult] = await Promise.all([
-        s3.upload(fullUploadParam).promise(),
-        s3.upload(thumbUploadParam).promise(),
+        fullUpload.done(),
+        thumbUpload.done(),
       ]);
+      console.log(`  [S3][${i}] full uploaded: ${fullResult.Location ?? buildUrl(file.filename + '_full.jpg')}`);
+      console.log(`  [S3][${i}] thumb uploaded: ${thumbResult.Location ?? buildUrl(file.filename + '_thumb.jpg')}`);
 
       // Clean up local temp files
       try {
@@ -79,19 +100,23 @@ exports.s3Uploadv2 = async (files) => {
       }
 
       return {
-        url: fullResult.Location,
-        thumbnailUrl: thumbResult.Location,
+        url: fullResult.Location ?? buildUrl(`${file.filename}_full.jpg`),
+        thumbnailUrl: thumbResult.Location ?? buildUrl(`${file.filename}_thumb.jpg`),
       };
     } else {
-      // Fallback: upload original file
-      const fileStream = fs.createReadStream(file.path);
-      const uploadParam = {
-        Bucket: bucketName,
-        Body: fileStream,
-        Key: file.filename,
-        ContentType: file.mimetype || "image/jpeg",
-      };
-      const result = await s3.upload(uploadParam).promise();
+      console.log(`  [S3][${i}] Uploading raw file key=${file.filename} (no fullPath/thumbPath)`);
+      const upload = new Upload({
+        client: s3Client,
+        params: {
+          Bucket: bucketName,
+          Body: fs.createReadStream(file.path),
+          Key: file.filename,
+          // Use detected mimetype, fall back to octet-stream (safe universal default)
+          ContentType: file.mimetype || "application/octet-stream",
+        },
+      });
+
+      const result = await upload.done();
 
       try {
         if (file.path && fs.existsSync(file.path)) {
@@ -101,9 +126,10 @@ exports.s3Uploadv2 = async (files) => {
         console.error(`Error deleting local temp file ${file.path}:`, cleanupErr.message);
       }
 
+      const url = result.Location ?? buildUrl(file.filename);
       return {
-        url: result.Location,
-        thumbnailUrl: result.Location,
+        url,
+        thumbnailUrl: url,
       };
     }
   });
@@ -112,12 +138,6 @@ exports.s3Uploadv2 = async (files) => {
 };
 
 exports.s3Deletev2 = async (files) => {
-  const s3 = new S3({
-    region,
-    accessKeyId,
-    secretAccessKey,
-  });
-
   const baseUrl = `https://${bucketName}.s3.${region}.amazonaws.com/`;
   const keysToDelete = [];
 
@@ -130,12 +150,14 @@ exports.s3Deletev2 = async (files) => {
     }
   });
 
-  const deletePromises = keysToDelete.map((key) => {
-    return s3.deleteObject({
-      Bucket: bucketName,
-      Key: key,
-    }).promise();
-  });
+  const deletePromises = keysToDelete.map((key) =>
+    s3Client.send(
+      new DeleteObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+      })
+    )
+  );
 
   return await Promise.all(deletePromises);
 };
