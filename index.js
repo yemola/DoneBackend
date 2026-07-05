@@ -14,6 +14,7 @@ const { Expo } = require("expo-server-sdk");
 const faqsRoute = require("./routes/faqs");
 const usersRoute = require("./routes/users");
 const authRoute = require("./routes/auth");
+const authSocialRoute = require("./routes/authSocial");
 const categoriesRoute = require("./routes/categories");
 const listingsRoute = require("./routes/listings");
 const orderRoute = require("./routes/order");
@@ -216,6 +217,7 @@ app.use(compression());
 
 app.use("/api/users", usersRoute);
 app.use("/api/auth", authRoute);
+app.use("/api/auth", authSocialRoute); // handles POST /social and GET /me
 app.use("/api/categories", categoriesRoute);
 app.use("/api/faqs", faqsRoute);
 app.use("/api/listings", listingsRoute);

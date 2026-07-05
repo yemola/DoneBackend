@@ -4,13 +4,16 @@ const UserSchema = new mongoose.Schema(
   {
     firstname: { type: String, required: true },
     lastname: { type: String, required: true },
-    username: { type: String, required: true },
+    // Social sign-in users may not have a username until they complete their profile
+    username: { type: String, required: false, default: "" },
     city: { type: String },
-    state: { type: String, required: true },
-    country: { type: String, required: true },
-    countryCode: { type: Object, required: true },
+    // Location fields are optional for social users — filled in via ProfileCompletion
+    state: { type: String },
+    country: { type: String },
+    countryCode: { type: Object },
     email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
+    // Password is not required for social auth users
+    password: { type: String },
     whatsapp: { type: String },
     image: { type: Object },
     isAdmin: {
@@ -22,6 +25,14 @@ const UserSchema = new mongoose.Schema(
       default: false,
     },
     expoPushToken: { type: String },
+    // Social auth tracking
+    provider: {
+      type: String,
+      enum: ["local", "google", "apple"],
+      default: "local",
+    },
+    // Provider-specific user ID (Google sub / Apple user string)
+    providerId: { type: String },
   },
   { timestamps: true }
 );
