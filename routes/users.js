@@ -14,6 +14,9 @@ const validateWith = require("../middleware/validation");
 const sgMail = require("@sendgrid/mail");
 const errorHandler = require("../middleware/errorHandler");
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const mongoose = require("mongoose");
+const crypto = require("crypto");
+
 
 const schema = yup.object().shape({
   firstname: yup.string().required().label("First Name"),
@@ -45,6 +48,62 @@ const fileFilter = (req, file, cb) => {
     cb(new Error("file is not of the correct type"), false);
   }
 };
+
+router.delete(
+  "/deleteUserAccountPerm/:id",
+  verifyTokenAndAuthorization,
+  async (req, res, next) => {
+    const userId = req.params.id;
+
+    const session = await mongoose.startSession();
+
+    try {
+      await session.withTransaction(async () => {
+        const user = await User.findById(userId).session(session);
+
+        if (!user) {
+          return;
+        }
+
+        const anonymizedUserReference = crypto
+          .createHash("sha256")
+          .update(user._id.toString())
+          .digest("hex");
+
+        await DeletedUser.create(
+          [
+            {
+              userReference: anonymizedUserReference,
+              deletedAt: new Date(),
+              deletionSource: "in_app",
+            },
+          ],
+          { session }
+        );
+
+        // Delete data owned solely by this user.
+        await Listing.deleteMany({ userId }, { session });
+        // await Favourite.deleteMany({ userId }, { session });
+        // await Notification.deleteMany({ userId }, { session });
+        // await DeviceToken.deleteMany({ userId }, { session });
+
+        // Apply your documented anonymization policy to shared records
+        // such as conversations, messages, reviews and transactions.
+
+        await User.findByIdAndDelete(userId, { session });
+      });
+
+      return res.status(200).json({
+        message: "Your account and associated personal data were deleted.",
+      });
+    } catch (error) {
+      next(error);
+    } finally {
+      await session.endSession();
+    }
+  }
+);
+
 router.post("/deleteUserAccount", async (req, res, next) => {
   const { userId } = req.body;
 

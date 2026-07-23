@@ -2,15 +2,15 @@ const mongoose = require("mongoose");
 
 const DeletedUserSchema = new mongoose.Schema(
   {
-    firstname: { type: String, required: true },
-    lastname: { type: String, required: true },
-    username: { type: String, required: true },
+    firstname: { type: String },
+    lastname: { type: String },
+    username: { type: String },
     city: { type: String },
-    state: { type: String, required: true },
-    country: { type: String, required: true },
-    countryCode: { type: Object, required: true },
-    email: { type: String, required: true },
-    password: { type: String, required: true },
+    state: { type: String },
+    country: { type: String },
+    countryCode: { type: Object },
+    email: { type: String },
+    password: { type: String },
     whatsapp: { type: String },
     image: { type: Object },
     isAdmin: {
@@ -22,6 +22,9 @@ const DeletedUserSchema = new mongoose.Schema(
       default: false,
     },
     expoPushToken: { type: String },
+    userReference: { type: String },
+    deletedAt: { type: Date },
+    deletionSource: { type: String }
   },
   { timestamps: true }
 );
